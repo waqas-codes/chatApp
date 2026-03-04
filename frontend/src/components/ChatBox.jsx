@@ -103,6 +103,8 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
         if (!socket) return;
 
         const handleMessageReceived = (newMessageReceived) => {
+            if (newMessageReceived.sender._id === user._id) return;
+
             if (
                 !selectedChatCompare ||
                 selectedChatCompare._id !== newMessageReceived.chat._id
@@ -136,6 +138,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
         };
 
         const handleMessageDeleted = (deletedMessage) => {
+            if (deletedMessage.sender === user._id) return;
             setMessages(prevMessages =>
                 prevMessages.map(msg =>
                     msg._id === deletedMessage._id ? deletedMessage : msg
@@ -144,6 +147,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
         };
 
         const handleMessageEdited = (editedMessage) => {
+            if (editedMessage.sender._id === user._id) return;
             setMessages(prevMessages =>
                 prevMessages.map(msg =>
                     msg._id === editedMessage._id ? editedMessage : msg

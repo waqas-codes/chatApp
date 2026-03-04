@@ -21,13 +21,20 @@ app.use(express.json());
 app.use(cors({ origin: "http://localhost:5173", credentials: true }));
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
-// Rate limiter
-const limiter = rateLimit({
-    windowMs: 15 * 60 * 1000,
-    max: 1000,
-    message: "Too many requests from this IP, please try again later."
+// Rate limiters
+const authLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 50, // Limit each IP to 50 login/register requests per window
+    message: "Too many authentication attempts from this IP, please try again later."
 });
-app.use("/api", limiter);
+
+// Apply rate limiting ONLY to sensitive authentication routes
+app.use("/api/user/login", authLimiter);
+app.use("/api/user/register", authLimiter);
+app.use("/api/user/verify-otp", authLimiter);
+app.use("/api/user/resend-otp", authLimiter);
+app.use("/api/user/forgot-password", authLimiter);
+app.use("/api/user/reset-password", authLimiter);
 
 // Routes
 app.use("/api/user", userRoutes);
@@ -85,8 +92,8 @@ io.on("connection", (socket) => {
         if (!chat || !chat.users) return console.log("chat.users not defined");
 
         chat.users.forEach((user) => {
-            if (user._id === newMessageRecieved.sender._id) return;
-            socket.in(user._id).emit("message recieved", newMessageRecieved);
+            if (user._id.toString() === newMessageRecieved.sender._id.toString()) return;
+            socket.in(user._id.toString()).emit("message recieved", newMessageRecieved);
         });
     });
 
@@ -98,8 +105,8 @@ io.on("connection", (socket) => {
         if (!messageData || !messageData.chat || !messageData.chat.users) return;
         var chat = messageData.chat;
         chat.users.forEach((user) => {
-            if (user._id === messageData.sender) return;
-            socket.in(user._id).emit("message deleted", messageData);
+            if (user._id.toString() === messageData.sender.toString()) return;
+            socket.in(user._id.toString()).emit("message deleted", messageData);
         });
     });
 
@@ -107,8 +114,8 @@ io.on("connection", (socket) => {
         if (!messageData || !messageData.chat || !messageData.chat.users) return;
         var chat = messageData.chat;
         chat.users.forEach((user) => {
-            if (user._id === messageData.sender._id) return;
-            socket.in(user._id).emit("message edited", messageData);
+            if (user._id.toString() === messageData.sender._id.toString()) return;
+            socket.in(user._id.toString()).emit("message edited", messageData);
         });
     });
 
