@@ -1,8 +1,8 @@
 import React, { useContext } from 'react';
-import { SocketContext } from '../context/CallProvider';
+import { CallState } from '../context/CallProvider';
 
 const CallModal = () => {
-    const { answerCall, call, callAccepted } = useContext(SocketContext);
+    const { answerCall, call, callAccepted } = CallState();
 
     return (
         <>

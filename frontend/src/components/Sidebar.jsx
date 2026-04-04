@@ -18,7 +18,7 @@ const Sidebar = ({ fetchAgain }) => {
     const [isGroupModalOpen, setIsGroupModalOpen] = useState(false);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-    const { user, setUser, selectedChat, setSelectedChat, chats, setChats, onlineUsers } = ChatState();
+    const { user, setUser, selectedChat, setSelectedChat, chats, setChats, onlineUsers, setNotification } = ChatState();
     const navigate = useNavigate();
 
     const debouncedSearch = useDebounce(search, 500);
@@ -91,6 +91,9 @@ const Sidebar = ({ fetchAgain }) => {
     const handleLogout = () => {
         localStorage.removeItem('userInfo');
         setUser(null);
+        setSelectedChat(null);
+        setChats([]);
+        setNotification([]);
         navigate('/');
     };
 

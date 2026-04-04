@@ -1,21 +1,18 @@
 import React, { useEffect, useState, useRef, useContext, useCallback } from 'react';
 import { Send, Phone, Video, MoreHorizontal, Paperclip, Smile, Search, ArrowLeft, Reply, Forward, X } from 'lucide-react';
-import { ChatState } from '../context/ChatProvider';
-import { SocketContext } from '../context/CallProvider';
+import { ChatState, ENDPOINT } from '../context/ChatProvider';
+import { CallState } from '../context/CallProvider';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { getSender, getSenderFull } from '../utils/chatLogics';
 import UpdateGroupModal from './UpdateGroupModal';
 import ProfileModal from './ProfileModal';
 import useDebounce from '../hooks/useDebounce';
-import io from 'socket.io-client';
-
-const ENDPOINT = 'http://localhost:5000';
-let socket;
+// Use global socket instead of local initialization
 let selectedChatCompare;
 
 const ChatBox = ({ fetchAgain, setFetchAgain }) => {
-    const { callUser, myVideo, userVideo, callAccepted, callEnded, stream, setStream, leaveCall } = useContext(SocketContext);
+    const { callUser, myVideo, userVideo, callAccepted, callEnded, stream, setStream, leaveCall } = CallState();
     const [isVideoCallActive, setIsVideoCallActive] = useState(false);
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -32,8 +29,14 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
     const [showForwardModal, setShowForwardModal] = useState(false);
     const [messageToForward, setMessageToForward] = useState(null);
     const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [showChatMenu, setShowChatMenu] = useState(false);
 
-    const { selectedChat, user, notification, setNotification, chats } = ChatState();
+    const { selectedChat, setSelectedChat, user, notification, setNotification, chats, socket } = ChatState();
+    const [page, setPage] = useState(1);
+    const [hasMore, setHasMore] = useState(true);
+    const [editMessageId, setEditMessageId] = useState(null);
+    const [editContent, setEditContent] = useState("");
+    const [showOptionsId, setShowOptionsId] = useState(null);
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
     const chatAreaRef = useRef(null);
@@ -48,38 +51,65 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
 
     // Socket setup
     useEffect(() => {
-        socket = io(ENDPOINT);
-        if (user) {
-            socket.emit('setup', user);
-        }
+        if (!socket || !user) return;
+
+        socket.emit('setup', user);
         socket.on('connected', () => setSocketConnected(true));
         socket.on('typing', () => setIsTyping(true));
         socket.on('stop typing', () => setIsTyping(false));
 
         return () => {
-            socket.disconnect();
+            socket.off('connected');
+            socket.off('typing');
+            socket.off('stop typing');
         };
-    }, [user]);
+    }, [socket, user]);
 
     // Fetch messages when chat changes
-    const fetchMessages = useCallback(async () => {
+    const fetchMessages = useCallback(async (isLoadMore = false) => {
         if (!selectedChat) return;
         try {
-            setLoading(true);
-            const { data } = await api.get(`/message/${selectedChat._id}`);
-            setMessages(data);
-            setLoading(false);
-            socket.emit('join chat', selectedChat._id);
+            if (!isLoadMore) setLoading(true);
+            const currentPage = isLoadMore ? page + 1 : 1;
+
+            const { data } = await api.get(`/message/${selectedChat._id}?page=${currentPage}&limit=20`);
+
+            if (isLoadMore) {
+                setMessages(prev => [...data, ...prev]);
+                setPage(currentPage);
+            } else {
+                setMessages(data);
+                setPage(1);
+                socket.emit('join chat', selectedChat._id);
+            }
+
+            if (data.length < 20) setHasMore(false);
+            else setHasMore(true);
+
+            if (!isLoadMore) setLoading(false);
         } catch (error) {
             toast.error('Failed to load messages');
             setLoading(false);
         }
-    }, [selectedChat]);
+    }, [selectedChat, page, socket]);
 
     useEffect(() => {
         fetchMessages();
         selectedChatCompare = selectedChat;
     }, [selectedChat, fetchMessages]);
+
+    // Infinite scroll observer
+    const observer = useRef();
+    const lastMessageRef = useCallback(node => {
+        if (loading) return;
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting && hasMore) {
+                fetchMessages(true);
+            }
+        });
+        if (node) observer.current.observe(node);
+    }, [loading, hasMore, fetchMessages]);
 
     // Mark messages as read + scroll
     useEffect(() => {
@@ -95,8 +125,8 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                     .catch(console.error);
             }
         }
-        scrollToBottom();
-    }, [messages, isTyping, selectedChat, user]);
+        if (page === 1) scrollToBottom();
+    }, [messages, isTyping, selectedChat, user, page, socket]);
 
     // Socket listeners for real-time events
     useEffect(() => {
@@ -166,7 +196,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
             socket.off('message deleted', handleMessageDeleted);
             socket.off('message edited', handleMessageEdited);
         };
-    }, [user, setNotification, setFetchAgain]);
+    }, [socket, user, setNotification, setFetchAgain]);
 
     // Send message handler
     const sendMessage = async (e) => {
@@ -269,18 +299,47 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
     }, [debouncedNewMessage, typing, selectedChat]);
 
 
+    // Edit message handler
+    const handleEdit = async (messageId) => {
+        if (!editContent.trim()) return;
+        try {
+            const { data } = await api.put(`/message/${messageId}/edit`, {
+                content: editContent
+            });
+            socket.emit("message edited", data);
+            setMessages(prev => prev.map(msg => msg._id === messageId ? data : msg));
+            setEditMessageId(null);
+            setEditContent("");
+        } catch (error) {
+            toast.error("Failed to edit message");
+        }
+    };
+
     // Delete message handler
-    const handleDelete = async (messageId) => {
-        if (window.confirm("Are you sure you want to delete this message?")) {
-            try {
-                const { data } = await api.delete(`/message/${messageId}/delete`, {
-                    data: { deleteForEveryone: true }
-                });
+    const handleDelete = async (messageId, deleteForEveryone = false) => {
+        try {
+            const { data } = await api.delete(`/message/${messageId}/delete`, {
+                data: { deleteForEveryone }
+            });
+            if (deleteForEveryone) {
                 socket.emit("message deleted", data);
-                setMessages(prev => prev.map(msg => msg._id === messageId ? data : msg));
-            } catch (error) {
-                toast.error("Failed to delete message");
             }
+            setMessages(prev => prev.map(msg => msg._id === messageId ? data : msg));
+            setShowOptionsId(null);
+        } catch (error) {
+            toast.error("Failed to delete message");
+        }
+    };
+
+    const handleClearChat = async () => {
+        if (!window.confirm("Are you sure you want to clear all messages in this chat?")) return;
+        try {
+            await api.delete(`/message/clear/${selectedChat._id}`);
+            setMessages([]);
+            toast.success("Chat cleared");
+            setFetchAgain(prev => !prev);
+        } catch (error) {
+            toast.error("Failed to clear chat");
         }
     };
 
@@ -341,8 +400,13 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                 </div>
             ) : (
                 <>
-                    {/* Header */}
                     <div className="flex z-10 items-center border-b border-gray-300 justify-between p-3 bg-gray-100 w-full h-16 shadow-sm">
+                        <button
+                            className="md:hidden mr-2 p-2 hover:bg-gray-200 rounded-full"
+                            onClick={() => setSelectedChat(null)}
+                        >
+                            <ArrowLeft className="w-6 h-6 text-gray-600" />
+                        </button>
                         <div
                             className="flex items-center cursor-pointer flex-1"
                             onClick={() => {
@@ -356,7 +420,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                             <img
                                 src={
                                     !selectedChat.isGroupChat
-                                        ? getSenderFull(user, selectedChat.users)?.avatar
+                                        ? getSenderFull(user, selectedChat.users)?.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
                                         : 'https://cdn-icons-png.flaticon.com/512/615/615075.png'
                                 }
                                 alt="Avatar"
@@ -385,11 +449,12 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                         }
                                         if (!selectedChat.isGroupChat) {
                                             const otherUser = getSenderFull(user, selectedChat.users);
-                                            callUser(otherUser._id);
+                                            callUser(otherUser._id, currentStream); // Pass stream directly
                                             setIsVideoCallActive(true);
                                         }
-                                    }).catch(() => {
+                                    }).catch((err) => {
                                         toast.error("Camera/Mic permission denied");
+                                        console.error(err);
                                     });
                                 }}
                             />
@@ -399,7 +464,38 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                 className={`w-6 h-6 cursor-pointer hover:text-gray-700 transition-colors ${showSearchBar ? 'text-green-500' : ''}`}
                                 onClick={() => setShowSearchBar(!showSearchBar)}
                             />
-                            <MoreHorizontal className="w-6 h-6 cursor-pointer hover:text-gray-700 transition-colors" />
+                            <div className="relative">
+                                <MoreHorizontal
+                                    className="w-6 h-6 cursor-pointer hover:text-gray-700 transition-colors"
+                                    onClick={() => setShowChatMenu(!showChatMenu)}
+                                />
+                                {showChatMenu && (
+                                    <div className="absolute right-0 top-8 bg-white shadow-xl rounded-lg py-2 w-48 z-50 border border-gray-200 animate-in fade-in slide-in-from-top-2 duration-200">
+                                        <button
+                                            onClick={() => {
+                                                if (selectedChat.isGroupChat) {
+                                                    setSelectedChat({ ...selectedChat, showUpdateModal: true });
+                                                } else {
+                                                    setIsProfileModalOpen(true);
+                                                }
+                                                setShowChatMenu(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center space-x-2"
+                                        >
+                                            <span>{selectedChat.isGroupChat ? 'Group Info' : 'Contact Info'}</span>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                handleClearChat();
+                                                setShowChatMenu(false);
+                                            }}
+                                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center space-x-2 text-red-600"
+                                        >
+                                            <span>Clear Chat</span>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -457,7 +553,10 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                         className="flex-1 overflow-y-auto p-6 bg-cover flex flex-col space-y-2 relative"
                         style={{ backgroundImage: "url('https://user-images.githubusercontent.com/15075759/28719144-86dc0f70-73b1-11e7-911d-60d70fcded21.png')" }}
                     >
-                        {loading ? (
+                        {/* Load more sentinel */}
+                        <div ref={lastMessageRef} className="h-2 w-full" />
+
+                        {loading && page === 1 ? (
                             <div className="flex items-center justify-center h-full">
                                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-500"></div>
                             </div>
@@ -468,35 +567,45 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                 return (
                                     <div key={m._id} className={`flex flex-col ${isSelf ? 'items-end' : 'items-start'} max-w-full group`}>
                                         <div className="flex items-center space-x-2 relative group">
-                                            {/* Action Menu (Visible on hover) */}
-                                            <div className="hidden group-hover:flex items-center space-x-1 bg-white/80 backdrop-blur-sm rounded-full px-2 py-1 shadow-sm transition-opacity z-10">
+                                            {/* Action Menu (Three Dots) */}
+                                            <div className="relative group-hover:opacity-100 opacity-0 transition-opacity">
                                                 <button
-                                                    onClick={() => {
-                                                        setReplyToMessage(m);
-                                                    }}
-                                                    className="text-gray-600 hover:bg-gray-100 p-1 rounded-full"
-                                                    title="Reply"
+                                                    onClick={() => setShowOptionsId(showOptionsId === m._id ? null : m._id)}
+                                                    className="p-1 hover:bg-gray-200 rounded-full text-gray-500"
                                                 >
-                                                    <Reply className="w-4 h-4" />
+                                                    <MoreHorizontal className="w-5 h-5" />
                                                 </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setMessageToForward(m);
-                                                        setShowForwardModal(true);
-                                                    }}
-                                                    className="text-gray-600 hover:bg-gray-100 p-1 rounded-full"
-                                                    title="Forward"
-                                                >
-                                                    <Forward className="w-4 h-4" />
-                                                </button>
-                                                {isSelf && !m.isDeletedForEveryone && (
-                                                    <button
-                                                        onClick={() => handleDelete(m._id)}
-                                                        className="text-red-500 hover:bg-red-100 p-1 rounded-full text-xs"
-                                                        title="Delete for everyone"
-                                                    >
-                                                        ✕
-                                                    </button>
+                                                {showOptionsId === m._id && (
+                                                    <div className="absolute top-8 right-0 bg-white shadow-xl rounded-lg border border-gray-200 py-1 w-36 z-50 animate-in fade-in zoom-in duration-100">
+                                                        <button
+                                                            onClick={() => { setReplyToMessage(m); setShowOptionsId(null); }}
+                                                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 flex items-center space-x-2"
+                                                        >
+                                                            <Reply className="w-4 h-4" /> <span>Reply</span>
+                                                        </button>
+                                                        {isSelf && !m.isDeletedForEveryone && (
+                                                            <>
+                                                                <button
+                                                                    onClick={() => { setEditMessageId(m._id); setEditContent(m.content); setShowOptionsId(null); }}
+                                                                    className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100"
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDelete(m._id, true)}
+                                                                    className="w-full text-left px-4 py-2 text-sm hover:bg-red-50 text-red-600"
+                                                                >
+                                                                    Delete for all
+                                                                </button>
+                                                            </>
+                                                        )}
+                                                        <button
+                                                            onClick={() => handleDelete(m._id, false)}
+                                                            className="w-full text-left px-4 py-2 text-sm hover:bg-gray-100 text-gray-600"
+                                                        >
+                                                            Delete for me
+                                                        </button>
+                                                    </div>
                                                 )}
                                             </div>
                                             <div
@@ -504,7 +613,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                                     } ${m.isDeletedForEveryone ? 'italic text-gray-500' : ''}`}
                                             >
                                                 {selectedChat.isGroupChat && !isSelf && (
-                                                    <p className="text-xs font-bold text-green-600 mb-1">{m.sender.name}</p>
+                                                    <p className="text-xs font-bold text-green-600 mb-1">{m.sender?.name || "Unknown User"}</p>
                                                 )}
 
                                                 {/* Reply Content inside Bubble */}
@@ -524,14 +633,30 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                                 )}
 
                                                 {/* Render Media or Text */}
-                                                {m.type === 'image' && !m.isDeletedForEveryone ? (
-                                                    <img src={`http://localhost:5000${m.content}`} alt="attachment" className="rounded-lg max-w-[250px] max-h-[250px] object-cover mb-1 border" />
-                                                ) : m.type === 'video' && !m.isDeletedForEveryone ? (
-                                                    <video src={`http://localhost:5000${m.content}`} controls className="rounded-lg max-w-[250px] max-h-[250px] mb-1 border" />
-                                                ) : m.type === 'voice' && !m.isDeletedForEveryone ? (
-                                                    <audio src={`http://localhost:5000${m.content}`} controls className="mb-1 max-w-[250px]" />
-                                                ) : m.type === 'document' && !m.isDeletedForEveryone ? (
-                                                    <a href={`http://localhost:5000${m.content}`} target="_blank" rel="noreferrer" className="flex items-center space-x-2 text-blue-600 underline mb-1">
+                                                {editMessageId === m._id ? (
+                                                    <div className="flex flex-col space-y-2 min-w-[200px]">
+                                                        <textarea
+                                                            className="w-full p-2 border rounded-md outline-none focus:ring-1 focus:ring-green-500 bg-white"
+                                                            value={editContent}
+                                                            onChange={(e) => setEditContent(e.target.value)}
+                                                            rows={2}
+                                                            autoFocus
+                                                        />
+                                                        <div className="flex justify-end space-x-2">
+                                                            <button onClick={() => setEditMessageId(null)} className="text-xs text-gray-500 px-2 py-1 hover:bg-gray-200 rounded">Cancel</button>
+                                                            <button onClick={() => handleEdit(m._id)} className="text-xs bg-green-500 text-white px-3 py-1 rounded hover:bg-green-600">Save</button>
+                                                        </div>
+                                                    </div>
+                                                ) : m.isDeletedForEveryone ? (
+                                                    <p className="text-[15px] italic text-gray-500">This message was deleted</p>
+                                                ) : m.type === 'image' ? (
+                                                    <img src={`${ENDPOINT}${m.content}`} alt="attachment" className="rounded-lg max-w-[250px] max-h-[250px] object-cover mb-1 border" />
+                                                ) : m.type === 'video' ? (
+                                                    <video src={`${ENDPOINT}${m.content}`} controls className="rounded-lg max-w-[250px] max-h-[250px] mb-1 border" />
+                                                ) : m.type === 'voice' ? (
+                                                    <audio src={`${ENDPOINT}${m.content}`} controls className="mb-1 max-w-[250px]" />
+                                                ) : m.type === 'document' ? (
+                                                    <a href={`${ENDPOINT}${m.content}`} target="_blank" rel="noreferrer" className="flex items-center space-x-2 text-blue-600 underline mb-1">
                                                         <Paperclip className="w-4 h-4" /> <span>Download Document</span>
                                                     </a>
                                                 ) : (
@@ -661,7 +786,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                 <div className="p-2 max-h-[400px] overflow-y-auto">
                                     {chats.map(chat => (
                                         <div key={chat._id} onClick={() => forwardMessage(chat._id)} className="p-3 hover:bg-gray-100 rounded-lg cursor-pointer flex items-center space-x-3">
-                                            <img src={chat.isGroupChat ? 'https://cdn-icons-png.flaticon.com/512/615/615075.png' : getSenderFull(user, chat.users).avatar} className="w-10 h-10 rounded-full" />
+                                            <img src={chat.isGroupChat ? 'https://cdn-icons-png.flaticon.com/512/615/615075.png' : getSenderFull(user, chat.users)?.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'} className="w-10 h-10 rounded-full" />
                                             <span className="font-medium">{chat.isGroupChat ? chat.chatName : getSender(user, chat.users)}</span>
                                         </div>
                                     ))}
@@ -679,7 +804,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                     )}
                     {!selectedChat.isGroupChat && (
                         <ProfileModal
-                            user={getSenderFull(user, selectedChat.users)}
+                            user={getSenderFull(user, selectedChat.users) || {}}
                             isOpen={isProfileModalOpen}
                             onClose={() => setIsProfileModalOpen(false)}
                         />

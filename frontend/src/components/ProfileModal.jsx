@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Camera, Edit2, Check } from 'lucide-react';
 import { ChatState } from '../context/ChatProvider';
 import api from '../services/api';
@@ -12,6 +12,11 @@ const ProfileModal = ({ user: profileUser, isOpen, onClose }) => {
     const [about, setAbout] = useState(profileUser?.about || 'Hey there! I am using WhatsApp.');
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        setName(profileUser?.name || '');
+        setAbout(profileUser?.about || 'Hey there! I am using WhatsApp.');
+    }, [profileUser]);
 
     const handleUpdate = async () => {
         try {
