@@ -1,5 +1,5 @@
 import React, { createContext, useState, useRef, useEffect, useContext } from 'react';
-import Peer from 'simple-peer';
+import Peer from 'simple-peer/simplepeer.min.js';
 import { ChatState } from './ChatProvider';
 import toast from 'react-hot-toast';
 
@@ -13,6 +13,7 @@ const CallProvider = ({ children }) => {
     const [stream, setStream] = useState(null);
     const [name, setName] = useState('');
     const [call, setCall] = useState({});
+    const [isCallUIOpen, setIsCallUIOpen] = useState(false);
 
     const myVideo = useRef();
     const userVideo = useRef();
@@ -25,14 +26,41 @@ const CallProvider = ({ children }) => {
             setCall({ isReceivingCall: true, from, name: callerName, signal });
         });
 
+        socket.on('callRejected', () => {
+            toast.error("Call Rejected");
+            resetCallState();
+        });
+
+        socket.on('endCall', () => {
+            resetCallState();
+        });
+
         return () => {
             socket.off('callUser');
+            socket.off('callRejected');
+            socket.off('endCall');
         };
     }, [socket]);
+
+    const resetCallState = () => {
+        setCallAccepted(false);
+        setCallEnded(true);
+        setIsCallUIOpen(false);
+        setCall({});
+        if (connectionRef.current) {
+            connectionRef.current.destroy();
+            connectionRef.current = null;
+        }
+        if (stream) {
+            stream.getTracks().forEach(track => track.stop());
+            setStream(null);
+        }
+    };
 
     const answerCall = () => {
         navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((currentStream) => {
             setStream(currentStream);
+            setIsCallUIOpen(true);
             if (myVideo.current) myVideo.current.srcObject = currentStream;
 
             setCallAccepted(true);
@@ -66,6 +94,7 @@ const CallProvider = ({ children }) => {
     };
 
     const callUser = (id, currentStream) => {
+        setIsCallUIOpen(true);
         const peer = new Peer({
             initiator: true,
             trickle: false,
@@ -99,10 +128,19 @@ const CallProvider = ({ children }) => {
         connectionRef.current = peer;
     };
 
+    const rejectCall = () => {
+        if (call.from) {
+            socket.emit('rejectCall', { to: call.from });
+        }
+        resetCallState();
+    };
+
     const leaveCall = () => {
-        setCallEnded(true);
-        if (connectionRef.current) connectionRef.current.destroy();
-        window.location.reload();
+        const to = call.from || call.userToCall; // Need to ensure we have the target ID
+        if (to) {
+            socket.emit('endCall', { to });
+        }
+        resetCallState();
     };
 
     return (
@@ -117,9 +155,12 @@ const CallProvider = ({ children }) => {
             setName,
             callEnded,
             me: user?._id,
+            isCallUIOpen,
+            setIsCallUIOpen,
             callUser,
             leaveCall,
             answerCall,
+            rejectCall,
         }}>
             {children}
         </CallContext.Provider>

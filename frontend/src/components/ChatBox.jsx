@@ -12,8 +12,7 @@ import useDebounce from '../hooks/useDebounce';
 let selectedChatCompare;
 
 const ChatBox = ({ fetchAgain, setFetchAgain }) => {
-    const { callUser, myVideo, userVideo, callAccepted, callEnded, stream, setStream, leaveCall } = CallState();
-    const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+    const { callUser, myVideo, userVideo, callAccepted, callEnded, stream, setStream, leaveCall, isCallUIOpen, setIsCallUIOpen } = CallState();
     const [messages, setMessages] = useState([]);
     const [loading, setLoading] = useState(false);
     const [newMessage, setNewMessage] = useState('');
@@ -450,7 +449,6 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                         if (!selectedChat.isGroupChat) {
                                             const otherUser = getSenderFull(user, selectedChat.users);
                                             callUser(otherUser._id, currentStream); // Pass stream directly
-                                            setIsVideoCallActive(true);
                                         }
                                     }).catch((err) => {
                                         toast.error("Camera/Mic permission denied");
@@ -515,7 +513,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                     )}
 
                     {/* Active Call UI Layer */}
-                    {isVideoCallActive && (
+                    {isCallUIOpen && (
                         <div className="absolute top-16 left-0 w-full h-[calc(100%-4rem)] bg-black z-20 flex flex-col pt-2">
                             <div className="flex-1 flex justify-center items-center relative">
                                 {callAccepted && !callEnded ? (
@@ -537,7 +535,6 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                 <button
                                     onClick={() => {
                                         leaveCall();
-                                        setIsVideoCallActive(false);
                                     }}
                                     className="w-12 h-12 bg-red-600 rounded-full flex items-center justify-center hover:bg-red-700 transition-colors"
                                 >

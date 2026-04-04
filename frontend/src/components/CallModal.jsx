@@ -2,7 +2,7 @@ import React, { useContext } from 'react';
 import { CallState } from '../context/CallProvider';
 
 const CallModal = () => {
-    const { answerCall, call, callAccepted } = CallState();
+    const { answerCall, rejectCall, call, callAccepted } = CallState();
 
     return (
         <>
@@ -20,7 +20,7 @@ const CallModal = () => {
                         </button>
                         <button
                             className="bg-red-500 hover:bg-red-600 px-6 py-2 rounded-full font-bold text-white transition-colors"
-                            onClick={() => window.location.reload()}
+                            onClick={rejectCall}
                         >
                             Reject
                         </button>
