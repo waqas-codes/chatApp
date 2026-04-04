@@ -55,11 +55,17 @@ const accessChat = async (req, res) => {
 // @access  Protected
 const fetchChats = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+
         Chat.find({ users: { $elemMatch: { $eq: req.user._id } } })
             .populate("users", "-password")
             .populate("groupAdmin", "-password")
             .populate("latestMessage")
             .sort({ updatedAt: -1 })
+            .skip(skip)
+            .limit(limit)
             .then(async (results) => {
                 results = await User.populate(results, {
                     path: "latestMessage.sender",

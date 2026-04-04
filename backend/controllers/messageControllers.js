@@ -7,11 +7,19 @@ const Chat = require("../models/chatModel");
 // @access  Protected
 const allMessages = async (req, res) => {
     try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = parseInt(req.query.limit) || 20;
+        const skip = (page - 1) * limit;
+
         const messages = await Message.find({ chat: req.params.chatId })
             .populate("sender", "name avatar email")
             .populate("replyTo")
-            .populate("chat");
-        res.json(messages);
+            .populate("chat")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.json(messages.reverse());
     } catch (error) {
         res.status(400);
         throw new Error(error.message);
@@ -143,4 +151,27 @@ const markMessagesRead = async (req, res) => {
     }
 }
 
-module.exports = { allMessages, sendMessage, deleteMessage, editMessage, markMessagesRead };
+// @desc    Clear all messages in a chat
+// @route   DELETE /api/message/clear/:chatId
+// @access  Protected
+const clearChat = async (req, res) => {
+    try {
+        const chatId = req.params.chatId;
+
+        // Option 1: Hard delete
+        await Message.deleteMany({ chat: chatId });
+
+        // Option 2: Soft delete (if preferred, but here we do hard delete per request)
+        // await Message.updateMany({ chat: chatId }, { $addToSet: { deletedFor: req.user._id } });
+
+        // Update latest message in chat
+        await Chat.findByIdAndUpdate(chatId, { latestMessage: null });
+
+        res.json({ message: "Chat cleared successfully" });
+    } catch (error) {
+        res.status(400);
+        throw new Error(error.message);
+    }
+};
+
+module.exports = { allMessages, sendMessage, deleteMessage, editMessage, markMessagesRead, clearChat };

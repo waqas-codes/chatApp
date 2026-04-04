@@ -12,13 +12,15 @@ const uploadRoutes = require("./routes/uploadRoutes");
 const { notFound, errorHandler } = require("./middleware/errorMiddleware");
 const path = require("path");
 const User = require("./models/userModel");
+const dns = require('dns')
+dns.setServers(["1.1.1.1", "8.8.8.8"])
 
 dotenv.config();
 connectDB();
 
 const app = express();
 app.use(express.json());
-app.use(cors({ origin: "http://localhost:5173", credentials: true }));
+app.use(cors({ origin: process.env.CLIENT_URL || "http://localhost:5173", credentials: true }));
 app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // Rate limiters
@@ -51,7 +53,7 @@ app.use(errorHandler);
 
 const server = http.createServer(app);
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5500;
 server.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
@@ -59,7 +61,7 @@ server.listen(PORT, () => {
 const io = require("socket.io")(server, {
     pingTimeout: 60000,
     cors: {
-        origin: "http://localhost:5173",
+        origin: process.env.CLIENT_URL || "http://localhost:5173",
         credentials: true,
     },
 });
@@ -76,6 +78,7 @@ io.on("connection", (socket) => {
         onlineUsers.set(userData._id, socket.id);
         io.emit("get-online-users", Array.from(onlineUsers.keys()));
         socket.emit("connected");
+        socket.emit("me", userData._id);
     });
 
     socket.on("join chat", (room) => {
@@ -120,20 +123,22 @@ io.on("connection", (socket) => {
     });
 
     // WebRTC Signaling
+
+    // WebRTC Signaling
     socket.on("callUser", ({ userToCall, signalData, from, name }) => {
-        socket.in(userToCall).emit("callUser", { signal: signalData, from, name });
+        io.to(userToCall).emit("callUser", { signal: signalData, from, name });
     });
 
     socket.on("answerCall", (data) => {
-        socket.in(data.to).emit("callAccepted", data.signal);
-    });
-
-    socket.on("endCall", ({ to }) => {
-        socket.in(to).emit("callEnded");
+        io.to(data.to).emit("callAccepted", data.signal);
     });
 
     socket.on("rejectCall", ({ to }) => {
-        socket.in(to).emit("callRejected");
+        io.to(to).emit("callRejected");
+    });
+
+    socket.on("endCall", ({ to }) => {
+        io.to(to).emit("endCall");
     });
 
     socket.on("disconnect", async () => {

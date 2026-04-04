@@ -212,9 +212,15 @@ const allUsers = async (req, res) => {
         }
         : {};
 
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const skip = (page - 1) * limit;
+
     const users = await User.find(keyword)
         .find({ _id: { $ne: req.user._id } })
-        .select("-password");
+        .select("-password")
+        .skip(skip)
+        .limit(limit);
     res.send(users);
 };
 
