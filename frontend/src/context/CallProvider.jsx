@@ -6,11 +6,11 @@ const SocketContext = createContext();
 
 const CallProvider = ({ children }) => {
     const [stream, setStream] = useState(null);
-    const [me, setMe] = useState('');
-    const [call, setCall] = useState({});
-    const [callAccepted, setCallAccepted] = useState(false);
-    const [callEnded, setCallEnded] = useState(false);
-    const [name, setName] = useState('');
+    // const [me, setMe] = useState('');
+    // const [call, setCall] = useState({});
+    // const [callAccepted, setCallAccepted] = useState(false);
+    // const [callEnded, setCallEnded] = useState(false);
+    // const [name, setName] = useState('');
 
     const { user } = ChatState();
 
