@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
-import { X, Camera, Edit2, Check } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, Camera, Edit2, Check, Loader2 } from 'lucide-react';
 import { ChatState } from '../context/ChatProvider';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { getAvatarUrl } from '../utils/avatarUrl';
 
 const ProfileModal = ({ user: profileUser, isOpen, onClose }) => {
     const { user: loggedInUser, setUser } = ChatState();
@@ -12,11 +13,55 @@ const ProfileModal = ({ user: profileUser, isOpen, onClose }) => {
     const [about, setAbout] = useState(profileUser?.about || 'Hey there! I am using WhatsApp.');
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         setName(profileUser?.name || '');
         setAbout(profileUser?.about || 'Hey there! I am using WhatsApp.');
     }, [profileUser]);
+
+
+
+    const handleAvatarUpload = async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Validate file type on the client side
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!allowedTypes.includes(file.type)) {
+            toast.error('Please select a valid image file (JPG, PNG, GIF, or WebP)');
+            return;
+        }
+
+        // Validate file size (max 10MB)
+        if (file.size > 10 * 1024 * 1024) {
+            toast.error('Image must be less than 10MB');
+            return;
+        }
+
+        try {
+            setUploadingAvatar(true);
+
+            const formData = new FormData();
+            formData.append('avatar', file);
+
+            const { data } = await api.post('/upload/avatar', formData);
+
+            // Update the user state and localStorage with the new data
+            setUser(data);
+            localStorage.setItem('userInfo', JSON.stringify(data));
+            toast.success('Profile picture updated!');
+        } catch (error) {
+            console.error('Avatar upload error:', error);
+            toast.error(error.response?.data?.message || 'Failed to upload profile picture');
+        } finally {
+            setUploadingAvatar(false);
+            // Reset file input so the same file can be re-selected
+            if (fileInputRef.current) fileInputRef.current.value = '';
+        }
+    };
 
     const handleUpdate = async () => {
         try {
@@ -49,14 +94,31 @@ const ProfileModal = ({ user: profileUser, isOpen, onClose }) => {
                     <div className="absolute -bottom-12 left-1/2 -translate-x-1/2">
                         <div className="relative group">
                             <img
-                                src={profileUser?.avatar}
+                                src={getAvatarUrl(profileUser?.avatar)}
                                 alt={profileUser?.name}
                                 className="w-24 h-24 rounded-full border-4 border-white object-cover shadow-lg"
                             />
                             {isSelf && (
-                                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                    <Camera className="text-white w-6 h-6" />
-                                </div>
+                                <>
+                                    {/* Hidden file input */}
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        onChange={handleAvatarUpload}
+                                        accept="image/jpeg,image/png,image/gif,image/webp"
+                                        className="hidden"
+                                    />
+                                    <div
+                                        onClick={() => !uploadingAvatar && fileInputRef.current?.click()}
+                                        className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                                    >
+                                        {uploadingAvatar ? (
+                                            <Loader2 className="text-white w-6 h-6 animate-spin" />
+                                        ) : (
+                                            <Camera className="text-white w-6 h-6" />
+                                        )}
+                                    </div>
+                                </>
                             )}
                         </div>
                     </div>

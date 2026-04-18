@@ -8,6 +8,7 @@ import { useNavigate } from 'react-router-dom';
 import GroupChatModal from './GroupChatModal';
 import ProfileModal from './ProfileModal';
 import useDebounce from '../hooks/useDebounce';
+import { getAvatarUrl } from '../utils/avatarUrl';
 
 const Sidebar = ({ fetchAgain }) => {
     const [search, setSearch] = useState('');
@@ -106,7 +107,7 @@ const Sidebar = ({ fetchAgain }) => {
             {/* Header */}
             <div className="flex items-center justify-between p-3 bg-gray-100 border-b border-gray-300">
                 <img
-                    src={user?.avatar}
+                    src={getAvatarUrl(user?.avatar)}
                     alt={user?.name}
                     className="w-10 h-10 rounded-full cursor-pointer object-cover hover:opacity-80 transition-opacity"
                     onClick={() => setIsProfileModalOpen(true)}
@@ -177,7 +178,7 @@ const Sidebar = ({ fetchAgain }) => {
                             className="flex items-center px-4 py-3 hover:bg-gray-100 cursor-pointer border-b border-gray-100 transition-colors"
                         >
                             <img
-                                src={result.avatar}
+                                src={getAvatarUrl(result.avatar)}
                                 alt={result.name}
                                 className="w-12 h-12 rounded-full object-cover"
                             />
@@ -203,7 +204,7 @@ const Sidebar = ({ fetchAgain }) => {
                                         <img
                                             src={
                                                 !chat.isGroupChat
-                                                    ? getSenderFull(user, chat.users)?.avatar
+                                                    ? getAvatarUrl(getSenderFull(user, chat.users)?.avatar)
                                                     : 'https://cdn-icons-png.flaticon.com/512/615/615075.png'
                                             }
                                             alt="Avatar"

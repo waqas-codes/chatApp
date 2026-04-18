@@ -3,6 +3,7 @@ import { X, Search, Check } from 'lucide-react';
 import { ChatState } from '../context/ChatProvider';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { getAvatarUrl } from '../utils/avatarUrl';
 
 const GroupChatModal = ({ isOpen, onClose }) => {
     const [groupChatName, setGroupChatName] = useState('');
@@ -120,7 +121,7 @@ const GroupChatModal = ({ isOpen, onClose }) => {
                                 onClick={() => handleSelectUser(res)}
                                 className="flex items-center p-2 hover:bg-gray-100 rounded-lg cursor-pointer transition-colors"
                             >
-                                <img src={res.avatar} alt={res.name} className="w-8 h-8 rounded-full border" />
+                                <img src={getAvatarUrl(res.avatar)} alt={res.name} className="w-8 h-8 rounded-full border" />
                                 <div className="ml-3">
                                     <p className="text-sm font-medium">{res.name}</p>
                                     <p className="text-[10px] text-gray-500">{res.email}</p>

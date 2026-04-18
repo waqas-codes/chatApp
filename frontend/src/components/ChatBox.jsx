@@ -5,6 +5,7 @@ import { CallState } from '../context/CallProvider';
 import api from '../services/api';
 import toast from 'react-hot-toast';
 import { getSender, getSenderFull } from '../utils/chatLogics';
+import { getAvatarUrl } from '../utils/avatarUrl';
 import UpdateGroupModal from './UpdateGroupModal';
 import ProfileModal from './ProfileModal';
 import useDebounce from '../hooks/useDebounce';
@@ -215,9 +216,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                 const formData = new FormData();
                 formData.append('media', selectedFile);
 
-                const uploadRes = await api.post('/upload', formData, {
-                    headers: { 'Content-Type': 'multipart/form-data' }
-                });
+                const uploadRes = await api.post('/upload', formData);
 
                 msgContent = uploadRes.data.filePath;
 
@@ -419,7 +418,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                             <img
                                 src={
                                     !selectedChat.isGroupChat
-                                        ? getSenderFull(user, selectedChat.users)?.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'
+                                        ? getAvatarUrl(getSenderFull(user, selectedChat.users)?.avatar)
                                         : 'https://cdn-icons-png.flaticon.com/512/615/615075.png'
                                 }
                                 alt="Avatar"
@@ -783,7 +782,7 @@ const ChatBox = ({ fetchAgain, setFetchAgain }) => {
                                 <div className="p-2 max-h-[400px] overflow-y-auto">
                                     {chats.map(chat => (
                                         <div key={chat._id} onClick={() => forwardMessage(chat._id)} className="p-3 hover:bg-gray-100 rounded-lg cursor-pointer flex items-center space-x-3">
-                                            <img src={chat.isGroupChat ? 'https://cdn-icons-png.flaticon.com/512/615/615075.png' : getSenderFull(user, chat.users)?.avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'} className="w-10 h-10 rounded-full" />
+                                            <img src={chat.isGroupChat ? 'https://cdn-icons-png.flaticon.com/512/615/615075.png' : getAvatarUrl(getSenderFull(user, chat.users)?.avatar)} className="w-10 h-10 rounded-full" />
                                             <span className="font-medium">{chat.isGroupChat ? chat.chatName : getSender(user, chat.users)}</span>
                                         </div>
                                     ))}

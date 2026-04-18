@@ -14,11 +14,12 @@ const storage = multer.diskStorage({
 });
 
 function checkFileType(file, cb) {
-    const filetypes = /jpg|jpeg|png|gif|mp4|webm|pdf|doc|docx|ogg|wav|mp3/;
-    const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
-    const mimetype = filetypes.test(file.mimetype);
+    const allowedExtensions = /jpg|jpeg|png|gif|mp4|webm|pdf|doc|docx|ogg|wav|mp3/;
+    const allowedMimetypes = /image\/(jpeg|png|gif|webp)|video\/(mp4|webm)|audio\/(mpeg|ogg|wav|mp3)|application\/(pdf|msword|vnd\.openxmlformats)/;
+    const extname = allowedExtensions.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedMimetypes.test(file.mimetype);
 
-    if (extname || mimetype) {
+    if (extname && mimetype) {
         return cb(null, true);
     } else {
         cb(new Error('Allowed: images, videos, documents, and audio files only'));

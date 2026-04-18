@@ -3,6 +3,7 @@ import { X, UserPlus, Settings, LogOut, Search } from 'lucide-react';
 import { ChatState } from '../context/ChatProvider';
 import api from '../services/api';
 import toast from 'react-hot-toast';
+import { getAvatarUrl } from '../utils/avatarUrl';
 
 const UpdateGroupModal = ({ fetchAgain, setFetchAgain, fetchMessages }) => {
     const [groupChatName, setGroupChatName] = useState('');
@@ -164,7 +165,7 @@ const UpdateGroupModal = ({ fetchAgain, setFetchAgain, fetchMessages }) => {
                                         onClick={() => handleAddUser(res)}
                                         className="flex items-center p-2 hover:bg-gray-100 rounded-lg cursor-pointer"
                                     >
-                                        <img src={res.avatar} alt={res.name} className="w-6 h-6 rounded-full border" />
+                                        <img src={getAvatarUrl(res.avatar)} alt={res.name} className="w-6 h-6 rounded-full border" />
                                         <span className="ml-2 text-sm">{res.name}</span>
                                         <UserPlus className="ml-auto w-4 h-4 text-green-600" />
                                     </div>
